@@ -42,7 +42,12 @@ func (ui *ConsoleUI) DisplayGameState(table *types.Table, players []types.Player
 		handStr := "[ ? ? ]" // Default hidden hand
 		// Note: We can't type assert here anymore since we're using the interface
 		// We'll need to add a method to the Player interface to check if it's human
-		handStr = p.GetHand().String()
+		// handStr = p.GetHand().String() // Keep original logic for human
+		if !p.IsHuman() {
+			handStr = "[ ###### ]" // Hide bot hand
+		} else {
+			handStr = p.GetHand().String() // Show human hand
+		}
 
 		fmt.Printf("- %s: Chips: %d | Bet: %d | Hand: %s%s\n",
 			p.GetID(),
@@ -51,7 +56,13 @@ func (ui *ConsoleUI) DisplayGameState(table *types.Table, players []types.Player
 			handStr,
 			status)
 	}
-	fmt.Println("==================================================")
+}
+
+// ClearScreen prints a number of newlines to simulate clearing the console.
+func (ui *ConsoleUI) ClearScreen() {
+	// Simple way to clear - print many newlines. A more robust solution
+	// might use platform-specific commands, but this is portable.
+	fmt.Print(strings.Repeat("\n", 50))
 }
 
 // LogAction prints a message describing a player's action.

@@ -20,6 +20,8 @@ func main() {
 	// Get game settings from user
 	numBots := promptForInt(reader, "Enter the number of bot opponents: ", 1, 5) // Limit bots for simplicity
 	startingChips := promptForInt(reader, "Enter the starting chip amount for each player: ", 100, 10000)
+	gameSpeedChoice := promptForGameSpeed(reader, "Select game speed (instant, fast, default, slow): ")
+	gameSpeed := getSpeedDuration(gameSpeedChoice)
 
 	// Initialize the UI
 	consoleUI := ui.NewConsoleUI()
@@ -38,7 +40,7 @@ func main() {
 	}
 
 	// Create and start the game
-	pokerGame := game.NewGame(players, consoleUI)
+	pokerGame := game.NewGame(players, consoleUI, gameSpeed) // Pass game speed
 	pokerGame.Start()
 
 	fmt.Println("Thank you for playing!")
@@ -68,5 +70,35 @@ func promptForDifficulty(reader *bufio.Reader, prompt string) string {
 			return input
 		}
 		fmt.Println("Invalid input. Please enter 'easy', 'medium', or 'hard'.")
+	}
+}
+
+// Helper function to prompt for game speed
+func promptForGameSpeed(reader *bufio.Reader, prompt string) string {
+	for {
+		fmt.Print(prompt)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToLower(input))
+		speeds := map[string]bool{"instant": true, "fast": true, "default": true, "slow": true}
+		if speeds[input] {
+			return input
+		}
+		fmt.Println("Invalid input. Please enter 'instant', 'fast', 'default', or 'slow'.")
+	}
+}
+
+// Helper function to get duration from speed choice
+func getSpeedDuration(speed string) time.Duration {
+	switch speed {
+	case "instant":
+		return 0 // No delay
+	case "fast":
+		return 500 * time.Millisecond
+	case "default":
+		return 1 * time.Second
+	case "slow":
+		return 2 * time.Second
+	default:
+		return 1 * time.Second // Default speed
 	}
 }

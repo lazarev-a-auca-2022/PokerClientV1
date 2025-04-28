@@ -87,6 +87,9 @@ func (p *BotPlayer) ResetBet() {
 	p.CurrentBet = 0
 }
 
+// IsHuman returns false for BotPlayer
+func (p *BotPlayer) IsHuman() bool { return false }
+
 func (p *BotPlayer) ResetForNewHand() {
 	p.Hand = &types.Hand{}
 	p.Folded = false

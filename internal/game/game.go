@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"pokerclientv1/internal/player"
 	"pokerclientv1/internal/types"
+	"strings"
 	"time"
 )
 
@@ -23,11 +24,12 @@ type Game struct {
 	CurrentPlayer int
 	SmallBlindPos int
 	BigBlindPos   int
-	UI            types.GameUI // UI interface for display and logging
+	UI            types.GameUI  // UI interface for display and logging
+	GameSpeed     time.Duration // Delay between steps
 }
 
 // NewGame initializes a new game with players.
-func NewGame(players []types.Player, ui types.GameUI) *Game {
+func NewGame(players []types.Player, ui types.GameUI, gameSpeed time.Duration) *Game {
 	return &Game{
 		Players:       players,
 		Deck:          NewDeck(),
@@ -38,6 +40,7 @@ func NewGame(players []types.Player, ui types.GameUI) *Game {
 		SmallBlindPos: 0,
 		BigBlindPos:   0,
 		UI:            ui,
+		GameSpeed:     gameSpeed, // Store game speed
 	}
 }
 
@@ -55,7 +58,7 @@ func (g *Game) Start() {
 		// Rotate dealer position for the next hand
 		g.DealerPos = (g.DealerPos + 1) % len(g.Players)
 		// TODO: Remove players with 0 chips
-		time.Sleep(3 * time.Second) // Pause between hands
+		g.waitWithLoader(g.GameSpeed * 3) // Longer pause between hands
 	}
 	fmt.Println("\n--- Game Over ---")
 	// Display final chip counts
@@ -90,6 +93,9 @@ func (g *Game) getPlayersInHand() []types.Player {
 
 // playHand executes a single hand of poker.
 func (g *Game) playHand() {
+	// 0. Clear screen at the start of the hand
+	g.UI.ClearScreen()
+
 	// 1. Reset table and player states for the new hand
 	g.resetForNewHand()
 
@@ -104,6 +110,7 @@ func (g *Game) playHand() {
 
 	// 5. Deal initial hands (2 cards each for Texas Hold'em)
 	g.dealHands(2)
+	g.waitWithLoader(g.GameSpeed)
 
 	// 6. Pre-flop betting round
 	g.Table.Round = "Pre-flop"
@@ -111,17 +118,21 @@ func (g *Game) playHand() {
 	if g.runBettingRound((g.BigBlindPos + 1) % len(g.Players)) {
 		// 7. Flop
 		g.dealCommunityCards("Flop", 3)
+		g.waitWithLoader(g.GameSpeed)
 		g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Flop Betting")
 		if g.runBettingRound(g.SmallBlindPos) {
 			// 8. Turn
 			g.dealCommunityCards("Turn", 1)
+			g.waitWithLoader(g.GameSpeed)
 			g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Turn Betting")
 			if g.runBettingRound(g.SmallBlindPos) {
 				// 9. River
 				g.dealCommunityCards("River", 1)
+				g.waitWithLoader(g.GameSpeed)
 				g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "River Betting")
 				if g.runBettingRound(g.SmallBlindPos) {
 					// 10. Showdown
+					g.waitWithLoader(g.GameSpeed)
 					g.showdown()
 				}
 			}
@@ -376,11 +387,12 @@ func (g *Game) runBettingRound(startPos int) bool {
 		playersActed++
 		currentPlayerIndex = (currentPlayerIndex + 1) % numPlayers
 
-		// Small delay for readability
-		time.Sleep(50 * time.Millisecond)
+		// Small delay for readability - replaced by waitWithLoader in main steps
+		// time.Sleep(50 * time.Millisecond)
 	}
 
 	// End of betting round cleanup (e.g., side pots if necessary - complex)
+	g.waitWithLoader(g.GameSpeed / 2) // Short pause after betting
 	fmt.Println("Betting round finished.")
 	fmt.Printf("Pot: %d\n", g.Pot)
 	return len(g.getPlayersInHand()) > 1
@@ -437,4 +449,22 @@ func (g *Game) awardPotUncontested() {
 	} else {
 		fmt.Println("Error: Tried to award pot uncontested with multiple players remaining.")
 	}
+}
+
+// waitWithLoader pauses execution for a duration and shows a simple loader.
+func (g *Game) waitWithLoader(duration time.Duration) {
+	if duration <= 0 {
+		return // No delay for instant speed
+	}
+	loaderChars := []string{".   ", "..  ", "... ", "...."}
+	startTime := time.Now()
+	charIndex := 0
+	for time.Since(startTime) < duration {
+		// Print loader character and carriage return to overwrite
+		fmt.Printf("\r%s", loaderChars[charIndex%len(loaderChars)])
+		charIndex++
+		time.Sleep(200 * time.Millisecond) // Update loader every 200ms
+	}
+	// Clear the loader line
+	fmt.Printf("\r%s\r", strings.Repeat(" ", len(loaderChars[0])))
 }

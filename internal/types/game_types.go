@@ -9,6 +9,7 @@ import (
 type GameUI interface {
 	DisplayGameState(table *Table, players []Player, pot int, stage string)
 	LogAction(playerID string, action string, amount int)
+	ClearScreen() // Added to clear console
 }
 
 // Player defines the interface for any player (human or bot)
@@ -26,6 +27,7 @@ type Player interface {
 	GetCurrentBet() int
 	SetCurrentBet(amount int)
 	ResetBet()
+	IsHuman() bool // Added to distinguish player types
 }
 
 // Table represents the shared state of the poker table

@@ -43,6 +43,9 @@ func (p *HumanPlayer) GetCurrentBet() int       { return p.CurrentBet }
 func (p *HumanPlayer) SetCurrentBet(amount int) { p.CurrentBet = amount }
 func (p *HumanPlayer) ResetBet()                { p.CurrentBet = 0 }
 
+// IsHuman returns true for HumanPlayer
+func (p *HumanPlayer) IsHuman() bool { return true }
+
 func (p *HumanPlayer) RemoveChips(amount int) error {
 	if amount > p.Chips {
 		return fmt.Errorf("%s cannot remove %d chips, only has %d", p.ID, amount, p.Chips)
