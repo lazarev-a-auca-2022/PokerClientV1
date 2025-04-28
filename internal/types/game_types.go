@@ -79,7 +79,8 @@ const (
 
 // String methods for Card, Suit, and Rank
 func (s Suit) String() string {
-	return [...]string{"Spades", "Hearts", "Diamonds", "Clubs"}[s]
+	// Use Unicode symbols for suits
+	return [...]string{"♠", "♥", "♦", "♣"}[s]
 }
 
 func (r Rank) String() string {
@@ -98,7 +99,8 @@ func (r Rank) String() string {
 }
 
 func (c Card) String() string {
-	return fmt.Sprintf("%s%s", c.Rank.String(), c.Suit.String()[:1])
+	// Combine rank and Unicode suit symbol
+	return fmt.Sprintf("%s%s", c.Rank.String(), c.Suit.String()) // Corrected: use c.Suit
 }
 
 func (h *Hand) String() string {
