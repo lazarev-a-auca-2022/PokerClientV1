@@ -26,6 +26,7 @@ type Game struct {
 	BigBlindPos   int
 	UI            types.GameUI  // UI interface for display and logging
 	GameSpeed     time.Duration // Delay between steps
+	gameOver      bool          // Flag to signal game end
 }
 
 // NewGame initializes a new game with players.
@@ -41,29 +42,123 @@ func NewGame(players []types.Player, ui types.GameUI, gameSpeed time.Duration) *
 		BigBlindPos:   0,
 		UI:            ui,
 		GameSpeed:     gameSpeed, // Store game speed
+		gameOver:      false,
 	}
 }
 
 // Start begins the main game loop.
 func (g *Game) Start() {
 	fmt.Println("Starting Poker Game!")
-	// Game loop (e.g., play multiple hands)
-	for i := 0; i < 5; i++ { // Play 5 hands for now
-		if len(g.getActivePlayers()) < 2 {
-			fmt.Println("Not enough players to continue.")
+	handNumber := 1
+	for !g.gameOver {
+		// Check for game end conditions before starting the hand
+		if g.checkGameOver() {
 			break
 		}
-		fmt.Printf("\n--- Starting Hand %d ---\n", i+1)
+
+		fmt.Printf("\n--- Starting Hand %d ---\n", handNumber)
 		g.playHand()
-		// Rotate dealer position for the next hand
-		g.DealerPos = (g.DealerPos + 1) % len(g.Players)
-		// TODO: Remove players with 0 chips
-		g.waitWithLoader(g.GameSpeed * 3) // Longer pause between hands
+
+		// Check for game end immediately after the hand (e.g., if human folded and lost)
+		if g.gameOver {
+			break
+		}
+
+		g.removeBrokePlayers() // Remove players with 0 chips
+
+		// Rotate dealer position for the next hand, only among remaining players
+		if len(g.Players) > 0 { // Avoid panic if all players are removed
+			g.DealerPos = (g.DealerPos + 1) % len(g.Players)
+		}
+
+		g.waitWithLoader(g.GameSpeed * 2) // Pause between hands
+		handNumber++
 	}
-	fmt.Println("\n--- Game Over ---")
-	// Display final chip counts
+
+	fmt.Println("\n--- Game Over --- ")
+	// Display final chip counts if players remain
+	if len(g.Players) > 0 {
+		fmt.Println("Final Chip Counts:")
+		for _, p := range g.Players {
+			fmt.Printf("- %s: %d chips\n", p.GetID(), p.GetChips())
+		}
+	}
+}
+
+// getPlayersWithChips returns players who have chips > 0.
+func (g *Game) getPlayersWithChips() []types.Player {
+	active := []types.Player{}
 	for _, p := range g.Players {
-		fmt.Printf("%s finished with %d chips\n", p.GetID(), p.GetChips())
+		if p.GetChips() > 0 {
+			active = append(active, p)
+		}
+	}
+	return active
+}
+
+// checkGameOver checks if the game should end.
+func (g *Game) checkGameOver() bool {
+	if g.gameOver { // Already flagged by player action
+		return true
+	}
+
+	playersWithChips := g.getPlayersWithChips()
+	if len(playersWithChips) <= 1 {
+		fmt.Println("Only one player remains!")
+		g.gameOver = true
+		return true
+	}
+
+	// Check if human player exists and has chips
+	humanAlive := false
+	for _, p := range playersWithChips {
+		if p.IsHuman() {
+			humanAlive = true
+			break
+		}
+	}
+	if !humanAlive {
+		// Find the human player in the original list to check if they were ever in the game
+		humanWasPresent := false
+		for _, p := range g.Players {
+			if p.IsHuman() {
+				humanWasPresent = true
+				break
+			}
+		}
+		if humanWasPresent {
+			fmt.Println("You are out of chips!")
+			g.gameOver = true
+			return true
+		}
+	}
+
+	return false
+}
+
+// removeBrokePlayers removes players with zero chips from the game.
+func (g *Game) removeBrokePlayers() {
+	remainingPlayers := []types.Player{}
+	for _, p := range g.Players {
+		if p.GetChips() > 0 {
+			remainingPlayers = append(remainingPlayers, p)
+		} else {
+			if p.IsHuman() {
+				// Human is broke, game over is handled in checkGameOver
+				// Keep human in the list for final display, but checkGameOver will stop the loop
+				remainingPlayers = append(remainingPlayers, p) // Keep human for final display
+			} else {
+				fmt.Printf("\n>> %s was kicked out due to being poor.\n", p.GetID())
+				g.waitWithLoader(g.GameSpeed)
+			}
+		}
+	}
+	g.Players = remainingPlayers
+	// Adjust dealer position if it's now out of bounds
+	if len(g.Players) > 0 {
+		g.DealerPos %= len(g.Players)
+	} else {
+		g.DealerPos = 0
 	}
 }
 
@@ -96,6 +191,15 @@ func (g *Game) playHand() {
 	// 0. Clear screen at the start of the hand
 	g.UI.ClearScreen()
 
+	// Reset gameOver flag potentially set by human player exiting previous hand's betting
+	// g.gameOver = false // Let checkGameOver handle this
+
+	// Check if enough players to play
+	if len(g.getPlayersWithChips()) < 2 {
+		g.gameOver = true
+		return
+	}
+
 	// 1. Reset table and player states for the new hand
 	g.resetForNewHand()
 
@@ -115,34 +219,53 @@ func (g *Game) playHand() {
 	// 6. Pre-flop betting round
 	g.Table.Round = "Pre-flop"
 	g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Pre-flop Betting")
-	if g.runBettingRound((g.BigBlindPos + 1) % len(g.Players)) {
-		// 7. Flop
-		g.dealCommunityCards("Flop", 3)
-		g.waitWithLoader(g.GameSpeed)
-		g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Flop Betting")
-		if g.runBettingRound(g.SmallBlindPos) {
-			// 8. Turn
-			g.dealCommunityCards("Turn", 1)
-			g.waitWithLoader(g.GameSpeed)
-			g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Turn Betting")
-			if g.runBettingRound(g.SmallBlindPos) {
-				// 9. River
-				g.dealCommunityCards("River", 1)
-				g.waitWithLoader(g.GameSpeed)
-				g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "River Betting")
-				if g.runBettingRound(g.SmallBlindPos) {
-					// 10. Showdown
-					g.waitWithLoader(g.GameSpeed)
-					g.showdown()
-				}
-			}
-		}
-	}
-
-	// If betting round returned false, someone won uncontested
-	if len(g.getPlayersInHand()) == 1 {
+	if !g.runBettingRound((g.BigBlindPos + 1) % len(g.Players)) {
 		g.awardPotUncontested()
+		return // Hand ends early
 	}
+	if g.gameOver {
+		return
+	} // Check if player exited during betting
+
+	// 7. Flop
+	g.dealCommunityCards("Flop", 3)
+	g.waitWithLoader(g.GameSpeed)
+	g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Flop Betting")
+	if !g.runBettingRound(g.SmallBlindPos) {
+		g.awardPotUncontested()
+		return // Hand ends early
+	}
+	if g.gameOver {
+		return
+	} // Check if player exited during betting
+
+	// 8. Turn
+	g.dealCommunityCards("Turn", 1)
+	g.waitWithLoader(g.GameSpeed)
+	g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "Turn Betting")
+	if !g.runBettingRound(g.SmallBlindPos) {
+		g.awardPotUncontested()
+		return // Hand ends early
+	}
+	if g.gameOver {
+		return
+	} // Check if player exited during betting
+
+	// 9. River
+	g.dealCommunityCards("River", 1)
+	g.waitWithLoader(g.GameSpeed)
+	g.UI.DisplayGameState(g.Table, g.Players, g.Pot, "River Betting")
+	if !g.runBettingRound(g.SmallBlindPos) {
+		g.awardPotUncontested()
+		return // Hand ends early
+	}
+	if g.gameOver {
+		return
+	} // Check if player exited during betting
+
+	// 10. Showdown
+	g.waitWithLoader(g.GameSpeed)
+	g.showdown()
 }
 
 // resetForNewHand prepares the game state for a new hand.
@@ -248,7 +371,7 @@ func (g *Game) dealCommunityCards(roundName string, numCards int) {
 }
 
 // runBettingRound manages the betting actions for a single round.
-// Returns true if the hand should continue, false if only one player remains.
+// Returns true if the hand should continue, false if only one player remains or player exits.
 func (g *Game) runBettingRound(startPos int) bool {
 	numPlayers := len(g.Players)
 	lastRaiser := -1 // Index of the last player who raised
@@ -265,32 +388,32 @@ func (g *Game) runBettingRound(startPos int) bool {
 	// The player who needs to act last is initially the one before the startPos
 	// (usually the Big Blind in pre-flop, or player before dealer in post-flop)
 	// This changes if someone raises.
-	actTarget := (startPos - 1 + numPlayers) % numPlayers
 	if g.Table.Round == "Pre-flop" {
-		actTarget = g.BigBlindPos // Big blind acts last pre-flop unless there's a raise
+		// actTarget = g.BigBlindPos // Big blind acts last pre-flop unless there's a raise
+		// The logic now relies on checking if the action returns to the lastRaiser
 	}
 
 	for playersActed < numToAct {
-		// Check if only one player is left
+		// Check if only one player is left in the hand (not just with chips)
 		if len(g.getPlayersInHand()) <= 1 {
-			return false // Hand ends
+			return false // Hand ends, pot awarded uncontested later
 		}
 
 		currentPlayer := g.Players[currentPlayerIndex]
 
 		// Skip folded players or players with no chips (already all-in)
-		if currentPlayer.IsFolded() || currentPlayer.GetChips() == 0 {
+		if currentPlayer.IsFolded() || (currentPlayer.GetChips() == 0 && currentPlayer.GetCurrentBet() > 0) {
 			currentPlayerIndex = (currentPlayerIndex + 1) % numPlayers
-			// If we skipped the player who was supposed to act last, the round might end
-			if currentPlayerIndex == (actTarget+1)%numPlayers && lastRaiser != -1 {
-				// This condition needs refinement. The loop should end when action gets back to the last raiser
-				// or when everyone has acted and bets are matched.
+			// Need to increment playersActed if skipping someone who already acted before raise
+			// This logic gets complex with raises. Simpler to check the exit condition below.
+			if lastRaiser == currentPlayerIndex {
+				break // Action came back around
 			}
 			continue
 		}
 
 		// Check if the action has come back around to the last raiser
-		if lastRaiser == currentPlayerIndex {
+		if lastRaiser != -1 && lastRaiser == currentPlayerIndex {
 			break // Betting round is over
 		}
 
@@ -298,6 +421,13 @@ func (g *Game) runBettingRound(startPos int) bool {
 		minRaiseAmount := MinRaise // Base minimum raise
 		// TODO: Calculate min raise based on previous raises in the round if necessary
 		action, amount := currentPlayer.TakeTurn(g.Table, g.Table.CurrentBet, minRaiseAmount)
+
+		// Check for player exit
+		if action == "exit" {
+			fmt.Printf("\n%s has chosen to leave the table.\n", currentPlayer.GetID())
+			g.gameOver = true
+			return false // Signal game end
+		}
 
 		// Process action
 		betAmount := 0
@@ -374,7 +504,6 @@ func (g *Game) runBettingRound(startPos int) bool {
 				lastRaiser = currentPlayerIndex      // This player is the new last raiser
 				playersActed = 0                     // Reset count since the bet changed
 				numToAct = len(g.getPlayersInHand()) // Re-evaluate number of players to act
-				actTarget = currentPlayerIndex       // Action must now come back to this player
 				g.UI.LogAction(currentPlayer.GetID(), fmt.Sprintf("raises to %d", totalPlayerBet), betAmount)
 			}
 		}
@@ -384,17 +513,24 @@ func (g *Game) runBettingRound(startPos int) bool {
 			fmt.Printf("%s is all-in!\n", currentPlayer.GetID())
 		}
 
-		playersActed++
+		// Only increment playersActed if the player wasn't skipped and didn't raise
+		if action != "raise" {
+			playersActed++
+		}
+
 		currentPlayerIndex = (currentPlayerIndex + 1) % numPlayers
 
-		// Small delay for readability - replaced by waitWithLoader in main steps
-		// time.Sleep(50 * time.Millisecond)
+		// Update UI after each action
+		g.UI.DisplayGameState(g.Table, g.Players, g.Pot, g.Table.Round+" Betting")
+		g.waitWithLoader(g.GameSpeed / 4) // Short pause after each action
+
 	}
 
-	// End of betting round cleanup (e.g., side pots if necessary - complex)
-	g.waitWithLoader(g.GameSpeed / 2) // Short pause after betting
+	// End of betting round cleanup
+	g.waitWithLoader(g.GameSpeed / 2) // Short pause after betting round
 	fmt.Println("Betting round finished.")
 	fmt.Printf("Pot: %d\n", g.Pot)
+	// Return true if more than one player is still in the hand
 	return len(g.getPlayersInHand()) > 1
 }
 

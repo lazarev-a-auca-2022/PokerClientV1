@@ -90,7 +90,7 @@ func (p *HumanPlayer) TakeTurn(table *types.Table, currentBet int, minRaise int)
 			options = []string{"fold", fmt.Sprintf("all-in (%d)", p.Chips)}
 		}
 
-		fmt.Printf("Options: [%s]\n", strings.Join(options, ", "))
+		fmt.Printf("Options: [%s, exit]\n", strings.Join(options, ", ")) // Add exit option
 		fmt.Print("Enter action: ")
 
 		input, _ := reader.ReadString('\n')
@@ -174,6 +174,9 @@ func (p *HumanPlayer) TakeTurn(table *types.Table, currentBet int, minRaise int)
 			}
 			fmt.Printf("Going all-in with %d chips.\n", allInAmount)
 			return actionType, allInAmount // Return "raise" or "call" depending on context, and the amount added
+
+		case "exit": // Handle exit command
+			return "exit", 0
 
 		default:
 			fmt.Println("Invalid action. Please choose from the available options.")
